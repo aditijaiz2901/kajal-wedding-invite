@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="format-detection" content="telephone=no, email=no, address=no, date=no">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
 <title>Kajal &amp; Lucky — 12–13 November 2026</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -433,6 +434,13 @@
   .rsvp-info{ text-align:left; }
   .rsvp-role{ font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:var(--gold-500); }
   .rsvp-num{ font-family:'Playfair Display',serif; font-size:19px; color:var(--plum-800); margin-top:2px; }
+  /* Some in-app browsers (WhatsApp, etc.) auto-link number-looking text
+     regardless of the format-detection meta tag — force our own styling. */
+  .rsvp-num, .rsvp-num a, .rsvp-num a:link, .rsvp-num a:visited{
+    color:var(--plum-800) !important;
+    text-decoration:none !important;
+    pointer-events:none;
+  }
   .rsvp-actions{ display:flex; gap:8px; }
   .rsvp-btn{
     width:38px; height:38px; border-radius:50%; display:flex; align-items:center; justify-content:center;
@@ -521,10 +529,25 @@
   .music-toggle.playing .bar1{ animation:eq 0.9s ease-in-out infinite; }
   .music-toggle.playing .bar2{ animation:eq 0.9s ease-in-out infinite .2s; }
   .music-toggle.playing .bar3{ animation:eq 0.9s ease-in-out infinite .4s; }
+
+  .music-hint{
+    position:fixed; top: calc(62px + env(safe-area-inset-top, 0px)); right: calc(16px + env(safe-area-inset-right, 0px));
+    z-index:60; background:rgba(90,32,54,0.92); color:#fff;
+    font-family:'Cormorant Garamond',serif; font-size:12px; letter-spacing:.05em;
+    padding:5px 10px; border-radius:8px; white-space:nowrap;
+    opacity:0; pointer-events:none; transition:opacity .5s ease;
+  }
+  .music-hint.show{ opacity:1; animation: hint-fade 4.5s ease forwards; }
+  @keyframes hint-fade{ 0%,60%{ opacity:1; } 100%{ opacity:0; } }
   @keyframes eq{ 0%,100%{ transform:scaleY(0.4); } 50%{ transform:scaleY(1); } }
 </style>
 </head>
 <body>
+
+<!-- silent audio primer: helps unlock/prime the device audio session on tap -->
+<audio id="audio-primer" playsinline preload="auto" style="display:none"
+  src="data:audio/wav;base64,UklGRkQDAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YSADAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==">
+</audio>
 
 <noscript><style>#envelope-screen{display:none!important;} #main{opacity:1!important;} .reveal{opacity:1!important; transform:none!important;}</style></noscript>
 
@@ -562,6 +585,7 @@
     <rect class="bar bar3" x="15" y="9" width="3" height="9" rx="1.2" fill="currentColor"/>
   </svg>
 </button>
+<div class="music-hint" id="music-hint">Tap for music</div>
 
 <!-- ================= ENVELOPE INTRO ================= -->
 <div id="envelope-screen">
@@ -938,9 +962,14 @@ window.addEventListener('error', function(e){
   function openInvite(){
     if(envelope.classList.contains('open')) return;
     envelope.classList.add('open');
-    // Create/resume the AudioContext synchronously, inside this same tap —
-    // mobile browsers (iOS Safari especially) require that, or audio stays
-    // silently suspended forever.
+    // Prime + resume audio synchronously inside this same tap — mobile
+    // browsers (iOS Safari especially) require that, or audio stays
+    // silently suspended forever. Playing a silent clip first helps some
+    // devices fully unlock the audio session before WebAudio kicks in.
+    try{
+      var primer = document.getElementById('audio-primer');
+      if(primer){ var p = primer.play(); if(p && p.catch) p.catch(function(){}); }
+    }catch(e){}
     initAudio();
     if(audioCtx && audioCtx.state === 'suspended'){ audioCtx.resume(); }
     setTimeout(function(){
@@ -948,6 +977,8 @@ window.addEventListener('error', function(e){
       main.classList.add('show');
       musicBtn.classList.add('show');
       if(!musicStarted){ startMusic(); }
+      var musicHint = document.getElementById('music-hint');
+      if(musicHint){ setTimeout(function(){ musicHint.classList.add('show'); }, 400); }
     }, 1300);
   }
   envelope.addEventListener('click', openInvite);
@@ -1103,6 +1134,12 @@ window.addEventListener('error', function(e){
   }
 
   musicBtn.addEventListener('click', function(){
+    try{
+      var primer = document.getElementById('audio-primer');
+      if(primer){ var p = primer.play(); if(p && p.catch) p.catch(function(){}); }
+    }catch(e){}
+    var musicHint = document.getElementById('music-hint');
+    if(musicHint){ musicHint.classList.remove('show'); }
     if(musicOn){ stopMusic(); } else { startMusic(); }
   });
 
